@@ -152,14 +152,13 @@
 		
 		<junit haltonfailure="false" haltonerror="yes" printsummary="true" fork="true" showoutput="true" >
 			<sysproperty key="net.sourceforge.cobertura.datafile" file="${target.test.coverage.datafile}" />	
-			<classpath>
-				<path refid="compile.test.classpath" />
-				<pathelement location="${target.test.coverage.instrumented.classes.dir}" />
-				<pathelement location="${target.test.classes.dir}" />
-			</classpath>
-
+			
+			<classpath location="${target.test.coverage.instrumented.classes.dir}" />
+			<classpath refid="compile.test.classpath" />
+			<classpath refid="reports.classpath" />			
+			<classpath location="${target.test.classes.dir}" />			
+			
 			<formatter type="xml" usefile="true" />
-
 
 			<batchtest todir="${target.reports.test.dir}" fork="true">
 				<fileset dir="${src.test.java.dir}">
