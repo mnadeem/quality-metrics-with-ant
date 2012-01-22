@@ -1,0 +1,190 @@
+<?xml version="1.0"?>
+
+
+<project name="seamless-file-io" basedir="." default="compile-test">
+
+	<target name="init" description="Load system properties" unless="system.complete">
+		<property file="project.properties" />
+		<tstamp>
+			<format property="FTIME" pattern="yyyyMMddHHmmss" />
+		</tstamp>
+		<echo message="Project Name: ${project.name}" />
+		<echo message="Java Version: ${ant.java.version}" />
+		<echo message="Ant Version: ${ant.version}" />
+		<echo message="Base Dir: ${basedir}" />
+		<echo message="User: ${user.name}" />
+
+		<property name="system.complete" value="true" />
+	</target>
+
+
+	<target name="clean" depends="init">
+		<delete dir="${target.dir}" />
+		<delete dir="${dist.dir}" />
+	</target>
+
+	<target name="init-path" depends="init" description="Initialize classpath" unless="path.initialized">
+		<path id="compile.classpath">
+			<fileset dir="${src.main.lib.dir}" includes="**/*.jar" />
+		</path>
+		<path id="run.classpath">
+			<path refid="compile.classpath" />
+			<pathelement location="${target.build.classes.dir}" />
+		</path>
+		<path id="compile.test.classpath">
+			<fileset dir="${src.test.lib.dir}" includes="**/*.jar" />
+			<path refid="run.classpath" />
+		</path>
+
+		<path id="reports.classpath">
+			<fileset dir="${src.report.lib.dir}" includes="**/*.jar" />
+		</path>
+		
+		<property name="path.initialized" value="true" />
+	</target>
+
+
+	<target name="compile" depends="init-path">
+
+		<mkdir dir="${target.build.classes.dir}" />
+
+		<copy todir="${target.build.classes.dir}">
+			<fileset dir="${src.main.java.dir}" />
+		</copy>
+
+		<javac srcdir="${src.main.java.dir}" destdir="${target.build.classes.dir}" classpathref="compile.classpath" debug="true" fork="true" />
+	</target>
+
+
+	<target name="compile-test" depends="compile">
+		<mkdir dir="${target.test.classes.dir}" />
+		<javac srcdir="${src.test.java.dir}" destdir="${target.test.classes.dir}" classpathref="compile.test.classpath" debug="true" fork="true" />
+	</target>
+
+   <!-- CI RELATED TASKS -->	
+
+	<target name="inti-reports-dir" description="Deletes and then creates entire reports directory" depends="init-path">
+		<delete dir="${target.reports.dir}" />
+		<mkdir dir="${target.reports.dir}" />
+	</target>
+
+	
+	<target name="init-test-reports-dir" description="Deletes and then creates PMD directory" depends="init-path">
+		<delete dir="${target.reports.test.dir}" />
+		<mkdir dir="${target.reports.test.dir}" />
+	</target>
+
+	
+	<target name="run-tests" depends="compile-test,init-test-reports-dir" unless="test.execute.complete" description="Execute JUnit tests">
+
+		<junit haltonfailure="false" haltonerror="yes" printsummary="false" fork="true">
+			
+			<classpath>
+				<path refid="compile.test.classpath" />
+				<pathelement location="${target.test.classes.dir}"/>
+			</classpath>
+
+			<formatter type="xml" usefile="true" />
+
+
+			<batchtest todir="${target.reports.test.dir}" fork="true">
+				<fileset dir="${src.test.java.dir}">
+					<include name="com/nadeem/app/seamless/io/AllTests.java" />
+				</fileset>
+			</batchtest>
+		</junit>
+		<property name="test.execute.complete" value="true" />
+	</target>
+
+	<target name="check-style" depends="init-path" description="Analyzes Code according to the Project Conventions">
+		
+		<delete dir="${target.reports.checkstyle.dir}" />
+		<mkdir dir="${target.reports.checkstyle.dir}" />
+
+		<taskdef classpathref="reports.classpath" resource="com/puppycrawl/tools/checkstyle/antlib.xml" />
+
+		<checkstyle failOnViolation="false" config="${src.report.config.dir}/checkstyle-rules.xml">
+			<formatter type="xml" toFile="${target.reports.checkstyle.dir}/checkstyle-report.xml" />
+			<fileset dir="${src.main.java.dir}" includes="**/*.java"/>
+		</checkstyle>
+	</target>
+
+	<target name="cpd" description="Copy paste detector" depends="init-path">
+		<delete dir="${target.reports.cpd.dir}" />
+		<mkdir dir="${target.reports.cpd.dir}" />
+
+		<taskdef name="cpd" classname="net.sourceforge.pmd.cpd.CPDTask" classpathref="reports.classpath" />
+		<cpd minimumTokenCount="140" format="xml" outputFile="${target.reports.cpd.dir}/cpd-report.xml">
+			<fileset dir="${src.main.java.dir}" includes="**/*.java" excludes="**/*Test.java" />
+		</cpd>
+	</target>
+
+	<target name="pmd" description="PMD Task" depends="init-path">
+		<delete dir="${target.reports.pmd.dir}" />
+		<mkdir dir="${target.reports.pmd.dir}" />
+		<taskdef name="pmd" classname="net.sourceforge.pmd.ant.PMDTask" classpathref="reports.classpath" />
+		<pmd rulesetfiles="${src.report.config.dir}/pmd-rules.xml">
+			<formatter type="xml" toFile="${target.reports.pmd.dir}/pmd-report.xml"/>
+			<fileset dir="src">
+				<include name="**/*.java"/>
+			</fileset>
+		</pmd>
+	</target>
+	
+	<target name="instrument" description="Coverage Instrument Task" depends="compile">
+		
+		<delete dir="${target.reports.coverage.dir}" />
+		<delete dir="${target.test.coverage.dir}" />
+		<mkdir dir="${target.reports.coverage.dir}" />
+		<mkdir dir="${target.test.coverage.dir}" />
+	
+		<taskdef classpathref="reports.classpath" resource="tasks.properties" />
+		<cobertura-instrument datafile="${target.test.coverage.datafile}" todir="${target.test.coverage.instrumented.classes.dir}">
+
+			<fileset dir="${target.build.classes.dir}">
+				<include name="**/*.class" />
+				<exclude name="**/*Test.class" />
+			</fileset>			
+		</cobertura-instrument>
+	</target>
+	
+	<target name="test-coverage" depends="init-test-reports-dir,instrument,compile-test">
+		
+		<junit haltonfailure="false" haltonerror="yes" printsummary="true" fork="true" showoutput="true" >
+			<sysproperty key="net.sourceforge.cobertura.datafile" file="${target.test.coverage.datafile}" />	
+			<classpath>
+				<path refid="compile.test.classpath" />
+				<pathelement location="${target.test.coverage.instrumented.classes.dir}" />
+				<pathelement location="${target.test.classes.dir}" />
+			</classpath>
+
+			<formatter type="xml" usefile="true" />
+
+
+			<batchtest todir="${target.reports.test.dir}" fork="true">
+				<fileset dir="${src.test.java.dir}">
+					<include name="com/nadeem/app/seamless/io/AllTests.java" />
+				</fileset>
+			</batchtest>
+		</junit>
+	</target>
+
+	
+	<target name="cobertura-report" depends="instrument, test-coverage">
+
+		<cobertura-report datafile="${target.test.coverage.datafile}"
+							srcdir="${src.main.java.dir}" 
+							destdir="${target.reports.coverage.dir}" 
+							format="xml" />
+	    
+	</target>
+
+	<target name="sonar" description="Sonar Task" depends="init-path">
+		<delete dir=".sonar"/>
+		<taskdef name="sonar" classname="org.sonar.ant.SonarTask" classpathref="reports.classpath" />
+		<sonar key="${project.name}" version="${project.version}" />
+	</target>
+
+	<target name="quality-metrics" depends="inti-reports-dir,cpd,pmd,check-style,cobertura-report,sonar" description="Check for Quality metrics, CPD,PMD,Checkstyle" />
+
+</project>
