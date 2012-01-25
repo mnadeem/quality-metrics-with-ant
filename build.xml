@@ -16,6 +16,16 @@
 
 		<property name="system.complete" value="true" />
 	</target>
+	
+	 <target name="mvn-init" unless="mvn.inited" depends="init" xmlns:artifact="urn:maven-artifact-ant">
+        <property name="mvn.inited" value="true"/>
+        <typedef resource="org/apache/maven/artifact/ant/antlib.xml" uri="urn:maven-artifact-ant"  classpath="lib/maven-ant-tasks-2.1.3.jar"/> 
+        <condition property="maven.repo.local" value="${maven.repo.local}" else="${user.home}/.m2/repository">
+            <isset property="maven.repo.local"/>
+        </condition>           
+        <echo>maven.local.repo=${maven.repo.local}</echo>
+        <artifact:localRepository id="local.repository" path="${maven.repo.local}"/> 
+    </target>	
 
 
 	<target name="clean" depends="init">
@@ -175,8 +185,38 @@
 							srcdir="${src.main.java.dir}" 
 							destdir="${target.reports.coverage.dir}" 
 							format="xml" />
-	    
+
 	</target>
+	
+	<target name="findbug" depends="mvn-init,compile" xmlns:artifact="urn:maven-artifact-ant">
+		
+		<delete dir="${target.reports.findbug.dir}" />
+		<mkdir dir="${target.reports.findbug.dir}" />
+	
+		 <artifact:dependencies pathId="findbug.classpath" useScope="runtime">
+	        <artifact:dependency groupId="net.sourceforge.findbugs"
+	                    artifactId="findbugs"
+	                    version="1.3.2"/>
+	    </artifact:dependencies>
+		
+		<typedef name="findbugs" classname="edu.umd.cs.findbugs.anttask.FindBugsTask">
+	        <classpath refid="findbug.classpath"/>
+	    </typedef>
+
+	    <pathconvert property="findbug.classpath">
+	        <path refid="findbug.classpath"/>
+	    </pathconvert>
+		<findbugs outputFile="${target.reports.findbug.dir}/findbugs-report.xml"
+					classpath="${findbug.classpath}" 
+					jvmArgs=" -Xmx600m"
+					pluginlist="${maven.repo.local}/net/sourceforge/findbugs/coreplugin/1.3.2/coreplugin-1.3.2.jar"
+					output="xml:withMessages" effort="max" failOnError="true" >
+			<class location="${target.build.classes.dir}" />
+			<sourcePath path="${src.main.java.dir}" />
+		</findbugs>
+
+	</target>
+
 
 	<target name="sonar" description="Sonar Task" depends="init-path">
 		<delete dir=".sonar"/>
@@ -184,6 +224,6 @@
 		<sonar key="${project.name}" version="${project.version}" />
 	</target>
 
-	<target name="quality-metrics" depends="inti-reports-dir,cpd,pmd,check-style,cobertura-report,sonar" description="Check for Quality metrics, CPD,PMD,Checkstyle" />
+	<target name="quality-metrics" depends="inti-reports-dir,findbug,cpd,pmd,check-style,cobertura-report,sonar" description="Check for Quality metrics, CPD,PMD,Checkstyle" />
 
 </project>
